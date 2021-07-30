@@ -21,12 +21,9 @@ type FirestoreEngine struct {
 }
 
 type DBWorkflow struct {
-	Meta            async.State
-	State           interface{} // json body of workflow state
-	LockTill        time.Time   // optimistic locking
-	Sampling100     bool
-	Sampling10000   bool
-	Sampling1000000 bool
+	Meta     async.State
+	State    interface{} // json body of workflow state
+	LockTill time.Time   // optimistic locking
 }
 
 func (fs FirestoreEngine) Lock(ctx context.Context, id string) (DBWorkflow, error) {
@@ -93,10 +90,6 @@ type DBWorkflowLog struct {
 	Input        interface{}
 	Output       interface{}
 	Callback     *async.CallbackRequest
-
-	Sampling100     bool
-	Sampling10000   bool
-	Sampling1000000 bool
 }
 
 func pjson(in interface{}) interface{} {
@@ -141,16 +134,13 @@ func (fs FirestoreEngine) Checkpoint(ctx context.Context, wf *DBWorkflow, s *asy
 		}
 
 		b.Set(fs.DB.Collection(fs.Collection+"_log").Doc(fmt.Sprintf("%v_%v", wf.Meta.ID, wf.Meta.PC)), DBWorkflowLog{
-			Meta:            wf.Meta,
-			State:           wf.State,
-			Time:            time.Now(),
-			ExecDuration:    time.Since(start),
-			Input:           pjson(input),
-			Output:          pjson(output),
-			Callback:        cb,
-			Sampling100:     wf.Sampling100,
-			Sampling10000:   wf.Sampling10000,
-			Sampling1000000: wf.Sampling1000000,
+			Meta:         wf.Meta,
+			State:        wf.State,
+			Time:         time.Now(),
+			ExecDuration: time.Since(start),
+			Input:        pjson(input),
+			Output:       pjson(output),
+			Callback:     cb,
 		})
 		_, err := b.Commit(ctx)
 		return err
@@ -260,11 +250,8 @@ func (fs FirestoreEngine) ScheduleAndCreate(ctx context.Context, id, name string
 	}
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	wf := DBWorkflow{
-		Meta:            async.NewState(id, name),
-		State:           state,
-		Sampling100:     rnd.Intn(100) == 0,
-		Sampling10000:   rnd.Intn(10000) == 0,
-		Sampling1000000: rnd.Intn(1000000) == 0,
+		Meta:  async.NewState(id, name),
+		State: state,
 	}
 	_, err = fs.DB.Collection(fs.Collection).Doc(id).Create(ctx, wf)
 	return err
