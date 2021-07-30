@@ -85,10 +85,13 @@ func (g *Grapher) Walk(s async.Stmt, ctx GraphCtx) GraphCtx {
 		for _, v := range x.Cases {
 			var cid string
 			_, ok := v.Handler.(*ReflectEvent)
+			_, ok2 := v.Handler.(*TimeoutHandler)
 			if ok {
 				cid = ctx.node(g, "▶️ /"+v.Callback.Name+"  ", "component")
-			} else {
+			} else if ok2 {
 				cid = ctx.node(g, "🕑"+v.Callback.Name+"  ", "component")
+			} else {
+				cid = ctx.node(g, "⚡"+v.Callback.Name+"  ", "component")
 			}
 			_ = g.g.AddEdge(id, cid, true, nil)
 			octx := g.Walk(v.Stmt, GraphCtx{

@@ -133,8 +133,14 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 			fmt.Fprintf(w, " %v \n %v", def, err)
 			return
 		}
-		w.Header().Add("Content-Type", "image/svg+xml")
-		gv.Render(gd, graphviz.SVG, w)
+		switch r.URL.Query().Get("format") {
+		case "svg":
+			w.Header().Add("Content-Type", "image/svg+xml")
+			gv.Render(gd, graphviz.SVG, w)
+		default:
+			w.Header().Add("Content-Type", "image/jpg")
+			gv.Render(gd, graphviz.JPG, w)
+		}
 	})
 	mr.HandleFunc("/definition/{name}", func(w http.ResponseWriter, r *http.Request) {
 		wfName := mux.Vars(r)["name"]
@@ -146,8 +152,14 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		w.Header().Add("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(wf().Definition())
 	})
-	mr.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {
-		docs, err := SwaggerDocs(cfg.BasePublicURL, workflows)
+	mr.HandleFunc("/swagger/{name}", func(w http.ResponseWriter, r *http.Request) {
+		wfName := mux.Vars(r)["name"]
+		wf, ok := workflows[wfName]
+		if !ok {
+			fmt.Fprintf(w, " workflow  %v not found", wfName)
+			return
+		}
+		docs, err := SwaggerDoc(cfg.BasePublicURL, wfName, wf)
 		if err != nil {
 			fmt.Fprintf(w, "%v ", err)
 			return
