@@ -18,8 +18,9 @@ func SwaggerDoc(host string, wfName string, wf func() async.WorkflowState) (inte
 		"definitions": definitions,
 		"swagger":     "2.0",
 		"info": map[string]interface{}{
-			"title":   wfName,
-			"version": "0.0.1",
+			"title":       wfName,
+			"version":     "0.0.1",
+			"description": `<img src="https://pizzaapp-ffs2ro4uxq-uc.a.run.app/graph/pizza" style="width:400px;" />`,
 		},
 		"host":     url.Host,
 		"basePath": "/",
@@ -28,10 +29,9 @@ func SwaggerDoc(host string, wfName string, wf func() async.WorkflowState) (inte
 	}
 	endpoints["/wf/"+wfName+"/{id}"] = map[string]interface{}{
 		"post": map[string]interface{}{
-			"consumes":    []string{"application/json"},
-			"produces":    []string{"application/json"},
-			"tags":        []string{wfName},
-			"description": `<img src="https://pizzaapp-ffs2ro4uxq-uc.a.run.app/graph/pizza" style="width:400px;" />`,
+			"consumes": []string{"application/json"},
+			"produces": []string{"application/json"},
+			"tags":     []string{wfName},
 			"parameters": []map[string]interface{}{
 				{
 					"name":        "id",
