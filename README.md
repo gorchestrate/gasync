@@ -1,6 +1,6 @@
 # gasync
+![link to docs](https://avatars.githubusercontent.com/u/73880988?s=200&u=4836092ec2bbec14ecd6597f41d4e69c9061309f&v=1)
 Minimalist serverless workflow framework built on top of Google Cloud.
-![link to docs](https://avatars.githubusercontent.com/u/73880988?s=400&u=4836092ec2bbec14ecd6597f41d4e69c9061309f&v=4)
 
 It allows you to:
 * Run your workflows for free
