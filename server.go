@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/goccy/go-graphviz"
@@ -26,11 +27,13 @@ type Config struct {
 	BasePublicURL        string
 	CORS                 bool
 	Collection           string
+	SignSecret           string
 }
 
 type Server struct {
-	Engine *FirestoreEngine
-	Router *mux.Router
+	Router    *mux.Router
+	Engine    *FirestoreEngine
+	Scheduler *GTasksScheduler
 }
 
 func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Server, error) {
@@ -67,7 +70,8 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		ProjectID:  cfg.GCloudProjectID,
 		LocationID: cfg.GCloudLocationID,
 		QueueName:  cfg.GCloudTasksQueueName,
-		ResumeURL:  cfg.BasePublicURL + "/resume",
+		ResumeURL:  strings.Trim(cfg.BasePublicURL, "/") + "/resume",
+		Secret:     cfg.SignSecret,
 	}
 	mr.HandleFunc("/resume", s.ResumeHandler)
 
@@ -78,20 +82,19 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		ProjectID:   cfg.GCloudProjectID,
 		LocationID:  cfg.GCloudLocationID,
 		QueueName:   cfg.GCloudTasksQueueName,
-		CallbackURL: cfg.BasePublicURL + "/callback/timeout",
+		CallbackURL: strings.Trim(cfg.BasePublicURL, "/") + "/callback/timeout",
+		Secret:      cfg.SignSecret,
 	}
 	mr.HandleFunc("/callback/timeout", gTaskMgr.TimeoutHandler)
 
-	mr.HandleFunc("/new/{id}", func(w http.ResponseWriter, r *http.Request) {
-		wfName := mux.Vars(r)["id"]
+	mr.HandleFunc("/wf/{name}/{id}", func(w http.ResponseWriter, r *http.Request) {
+		wfName := mux.Vars(r)["name"]
 		wf, ok := workflows[wfName]
 		if !ok {
-			if err != nil {
-				fmt.Fprintf(w, " workflow  %v not found", wfName)
-				return
-			}
+			fmt.Fprintf(w, " workflow  %v not found", wfName)
+			return
 		}
-		err := engine.ScheduleAndCreate(r.Context(), mux.Vars(r)["id"], "pizzaOrder", wf()) // TODO: how to create workflow with params!?
+		err := engine.ScheduleAndCreate(r.Context(), mux.Vars(r)["id"], wfName, wf()) // TODO: how to create workflow with params!?
 		if err != nil {
 			w.WriteHeader(400)
 			fmt.Fprintf(w, err.Error())
@@ -104,8 +107,8 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 			w.WriteHeader(500)
 			return
 		}
-	})
-	mr.HandleFunc("/status/{id}", func(w http.ResponseWriter, r *http.Request) {
+	}).Methods("POST")
+	mr.HandleFunc("/wf/{id}", func(w http.ResponseWriter, r *http.Request) {
 		wf, err := engine.Get(r.Context(), mux.Vars(r)["id"])
 		if err != nil {
 			w.WriteHeader(400)
@@ -114,15 +117,13 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(wf)
-	})
-	mr.HandleFunc("/graph/{id}", func(w http.ResponseWriter, r *http.Request) {
-		wfName := mux.Vars(r)["id"]
+	}).Methods("GET")
+	mr.HandleFunc("/graph/{name}", func(w http.ResponseWriter, r *http.Request) {
+		wfName := mux.Vars(r)["name"]
 		wf, ok := workflows[wfName]
 		if !ok {
-			if err != nil {
-				fmt.Fprintf(w, " workflow  %v not found", wfName)
-				return
-			}
+			fmt.Fprintf(w, " workflow  %v not found", wfName)
+			return
 		}
 		g := Grapher{}
 		def := g.Dot(wf().Definition())
@@ -135,9 +136,18 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		w.Header().Add("Content-Type", "image/jpg")
 		gv.Render(gd, graphviz.JPG, w)
 	})
-
+	mr.HandleFunc("/definition/{name}", func(w http.ResponseWriter, r *http.Request) {
+		wfName := mux.Vars(r)["name"]
+		wf, ok := workflows[wfName]
+		if !ok {
+			fmt.Fprintf(w, " workflow  %v not found", wfName)
+			return
+		}
+		w.Header().Add("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(wf().Definition())
+	})
 	mr.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {
-		docs, err := SwaggerDocs(workflows)
+		docs, err := SwaggerDocs(cfg.BasePublicURL, workflows)
 		if err != nil {
 			fmt.Fprintf(w, "%v ", err)
 			return
@@ -148,9 +158,10 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		_ = e.Encode(docs)
 	})
 	ret := &Server{
-		Router: mr,
-		Engine: engine,
+		Router:    mr,
+		Engine:    engine,
+		Scheduler: gTaskMgr,
 	}
-	mr.HandleFunc("/event/{id}/{event}", ret.SimpleEventHandler)
+	mr.HandleFunc("/wf/{name}/{id}/{event}", ret.SimpleEventHandler)
 	return ret, nil
 }

@@ -6,7 +6,7 @@ import (
 	"github.com/gorchestrate/async"
 )
 
-func SwaggerDocs(workflows map[string]func() async.WorkflowState) (interface{}, error) {
+func SwaggerDocs(host string, workflows map[string]func() async.WorkflowState) (interface{}, error) {
 	definitions := map[string]interface{}{}
 	endpoints := map[string]interface{}{}
 	docs := map[string]interface{}{
@@ -16,16 +16,17 @@ func SwaggerDocs(workflows map[string]func() async.WorkflowState) (interface{}, 
 			"title":   "Pizza Service",
 			"version": "0.0.1",
 		},
-		"host":     "pizzaapp-ffs2ro4uxq-uc.a.run.app",
+		"host":     host,
 		"basePath": "/",
 		"schemes":  []string{"https"},
 		"paths":    endpoints,
 	}
 	for wfName, wf := range workflows {
-		endpoints["/"+wfName+"/new/{id}"] = map[string]interface{}{
+		endpoints["/wf/"+wfName+"/{id}"] = map[string]interface{}{
 			"post": map[string]interface{}{
 				"consumes": []string{"application/json"},
 				"produces": []string{"application/json"},
+				"tags":     []string{wfName},
 				"parameters": []map[string]interface{}{
 					{
 						"name":        "id",
@@ -62,10 +63,11 @@ func SwaggerDocs(workflows map[string]func() async.WorkflowState) (interface{}, 
 					for name, def := range out.Definitions {
 						definitions[name] = def
 					}
-					endpoints["/"+wfName+"/event/{id}/"+v.Callback.Name] = map[string]interface{}{
+					endpoints["/wf/"+wfName+"/{id}/"+v.Callback.Name] = map[string]interface{}{
 						"post": map[string]interface{}{
 							"consumes": []string{"application/json"},
 							"produces": []string{"application/json"},
+							"tags":     []string{wfName},
 							"parameters": []map[string]interface{}{
 								{
 									"name":        "id",

@@ -195,7 +195,7 @@ func (fs FirestoreEngine) HandleEvent(ctx context.Context, id string, name strin
 	defer fs.Unlock(ctx, id)
 	w, ok := fs.Workflows[wf.Meta.Workflow]
 	if !ok {
-		return nil, fmt.Errorf("workflow not found: %v", err)
+		return nil, fmt.Errorf("workflow not found: %v", wf.Meta.Workflow)
 	}
 	state := w()
 	d, err := json.Marshal(wf.State)

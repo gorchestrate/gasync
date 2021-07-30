@@ -2,7 +2,10 @@ package gasync
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -22,10 +25,18 @@ type GTasksScheduler struct {
 	QueueName   string
 	ResumeURL   string
 	CallbackURL string
+	Secret      string
 }
 
 type ResumeRequest struct {
-	ID string
+	ID        string
+	Signature string
+}
+
+func (req ResumeRequest) HMAC(secret []byte) string {
+	h := hmac.New(sha256.New, secret)
+	h.Write([]byte(req.ID))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (mgr *GTasksScheduler) ResumeHandler(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +44,12 @@ func (mgr *GTasksScheduler) ResumeHandler(w http.ResponseWriter, r *http.Request
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		log.Printf("err: %v", err)
+		return
+	}
+
+	if req.HMAC([]byte(mgr.Secret)) != req.Signature {
+		w.WriteHeader(403)
+		fmt.Fprintf(w, "signature invalid")
 		return
 	}
 
@@ -47,9 +64,11 @@ func (mgr *GTasksScheduler) ResumeHandler(w http.ResponseWriter, r *http.Request
 // in this demo we resume workflows right inside the http handler.
 // we use this scheduler only for redundancy in case resume will fail for some reason in http handler.
 func (mgr *GTasksScheduler) Schedule(ctx context.Context, id string) error {
-	body, err := json.Marshal(ResumeRequest{
+	req := ResumeRequest{
 		ID: id,
-	})
+	}
+	req.Signature = req.HMAC([]byte(mgr.Secret))
+	body, err := json.Marshal(req)
 	if err != nil {
 		panic(err)
 	}
@@ -70,10 +89,10 @@ func (mgr *GTasksScheduler) Schedule(ctx context.Context, id string) error {
 	return err
 }
 
-func (t *GTasksScheduler) Timeout(dur time.Duration) *TimeoutHandler {
+func (s *Server) Timeout(dur time.Duration) *TimeoutHandler {
 	return &TimeoutHandler{
 		Duration:  dur,
-		scheduler: t,
+		scheduler: s.Scheduler,
 	}
 }
 
@@ -104,14 +123,35 @@ func (t *TimeoutHandler) Teardown(ctx context.Context, req async.CallbackRequest
 	return t.scheduler.Teardown(ctx, req, handled)
 }
 
+type TimeoutReq struct {
+	Req       async.CallbackRequest
+	Signature string
+}
+
+func (req TimeoutReq) HMAC(secret []byte) string {
+	h := hmac.New(sha256.New, secret)
+	h.Write([]byte(req.Req.Name))
+	h.Write([]byte(req.Req.ThreadID))
+	h.Write([]byte(req.Req.WorkflowID))
+	h.Write([]byte(fmt.Sprint(req.Req.PC)))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func (mgr *GTasksScheduler) TimeoutHandler(w http.ResponseWriter, r *http.Request) {
-	var req async.CallbackRequest
+	var req TimeoutReq
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		log.Printf("err: %v", err)
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "json parse: %v", err)
 		return
 	}
-	_, err = mgr.Engine.HandleCallback(r.Context(), req.WorkflowID, req, nil)
+
+	if req.HMAC([]byte(mgr.Secret)) != req.Signature {
+		w.WriteHeader(403)
+		fmt.Fprintf(w, "signature invalid")
+		return
+	}
+	_, err = mgr.Engine.HandleCallback(r.Context(), req.Req.WorkflowID, req.Req, nil)
 	if err != nil {
 		log.Printf("err: %v", err)
 		w.WriteHeader(500)
@@ -123,7 +163,11 @@ type GTasksSchedulerData struct {
 	ID string
 }
 
-func (mgr *GTasksScheduler) Setup(ctx context.Context, req async.CallbackRequest, del time.Duration) (string, error) {
+func (mgr *GTasksScheduler) Setup(ctx context.Context, r async.CallbackRequest, del time.Duration) (string, error) {
+	req := TimeoutReq{
+		Req: r,
+	}
+	req.Signature = req.HMAC([]byte(mgr.Secret))
 	body, err := json.Marshal(req)
 	if err != nil {
 		panic(err)
