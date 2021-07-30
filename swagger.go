@@ -7,8 +7,8 @@ import (
 	"github.com/gorchestrate/async"
 )
 
-func SwaggerDoc(host string, wfName string, wf func() async.WorkflowState) (interface{}, error) {
-	url, err := url.Parse(host)
+func SwaggerDoc(baseurl string, wfName string, wf func() async.WorkflowState) (interface{}, error) {
+	url, err := url.Parse(baseurl)
 	if err != nil {
 		return nil, err
 	}
@@ -20,7 +20,7 @@ func SwaggerDoc(host string, wfName string, wf func() async.WorkflowState) (inte
 		"info": map[string]interface{}{
 			"title":       wfName,
 			"version":     "0.0.1",
-			"description": `<img src="https://pizzaapp-ffs2ro4uxq-uc.a.run.app/graph/pizza" style="width:400px;" />`,
+			"description": `<img src="` + baseurl + `/graph/pizza?format=svg" style="width:400px;" />`,
 		},
 		"host":     url.Host,
 		"basePath": "/",
