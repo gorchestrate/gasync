@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -248,7 +247,6 @@ func (fs FirestoreEngine) ScheduleAndCreate(ctx context.Context, id, name string
 	if err != nil {
 		return err
 	}
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	wf := DBWorkflow{
 		Meta:  async.NewState(id, name),
 		State: state,
