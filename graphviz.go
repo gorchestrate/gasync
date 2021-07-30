@@ -70,20 +70,26 @@ func (g *Grapher) Walk(s async.Stmt, ctx GraphCtx) GraphCtx {
 	case async.ContinueStmt:
 		return GraphCtx{}
 	case async.StmtStep:
-		id := ctx.node(g, x.Name+"  ", "box")
+		id := ctx.node(g, "⚙️ "+x.Name+"  ", "box")
 		g.AddEdges(ctx.Prev, id)
 		return GraphCtx{Prev: []string{id}}
 	case async.WaitCondStmt:
-		id := ctx.node(g, "wait for "+x.Name, "hexagon")
+		id := ctx.node(g, "⏸ wait for "+x.Name, "hexagon")
 		g.AddEdges(ctx.Prev, id)
 		return GraphCtx{Prev: []string{id}}
 	case async.WaitEventsStmt:
-		id := ctx.node(g, "wait "+x.Name, "hexagon")
+		id := ctx.node(g, "⏸ wait "+x.Name, "hexagon")
 		g.AddEdges(ctx.Prev, id)
 		prev := []string{}
 		breaks := []string{}
 		for _, v := range x.Cases {
-			cid := ctx.node(g, v.Callback.Name+"  ", "component")
+			var cid string
+			_, ok := v.Handler.(*ReflectEvent)
+			if ok {
+				cid = ctx.node(g, "▶️ /"+v.Callback.Name+"  ", "component")
+			} else {
+				cid = ctx.node(g, "🕑"+v.Callback.Name+"  ", "component")
+			}
 			_ = g.g.AddEdge(id, cid, true, nil)
 			octx := g.Walk(v.Stmt, GraphCtx{
 				Prev: []string{cid},
@@ -107,7 +113,7 @@ func (g *Grapher) Walk(s async.Stmt, ctx GraphCtx) GraphCtx {
 		//g.AddEdges(octx.Prev, pend)
 		return GraphCtx{Prev: ctx.Prev}
 	case async.ForStmt:
-		id := ctx.node(g, "while "+x.Name, "hexagon")
+		id := ctx.node(g, "↺ while "+x.Name, "hexagon")
 		g.AddEdges(ctx.Prev, id)
 		breaks := []string{}
 		curCtx := GraphCtx{Prev: []string{id}}

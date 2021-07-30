@@ -133,8 +133,8 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 			fmt.Fprintf(w, " %v \n %v", def, err)
 			return
 		}
-		w.Header().Add("Content-Type", "image/jpg")
-		gv.Render(gd, graphviz.JPG, w)
+		w.Header().Add("Content-Type", "image/svg+xml")
+		gv.Render(gd, graphviz.SVG, w)
 	})
 	mr.HandleFunc("/definition/{name}", func(w http.ResponseWriter, r *http.Request) {
 		wfName := mux.Vars(r)["name"]

@@ -2,23 +2,29 @@ package gasync
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/gorchestrate/async"
 )
 
 func SwaggerDocs(host string, workflows map[string]func() async.WorkflowState) (interface{}, error) {
+	url, err := url.Parse(host)
+	if err != nil {
+		return nil, err
+	}
 	definitions := map[string]interface{}{}
 	endpoints := map[string]interface{}{}
 	docs := map[string]interface{}{
 		"definitions": definitions,
 		"swagger":     "2.0",
 		"info": map[string]interface{}{
-			"title":   "Pizza Service",
-			"version": "0.0.1",
+			"title":       "Pizza Service",
+			"version":     "0.0.1",
+			"description": "<img src=\"https://pizzaapp-ffs2ro4uxq-uc.a.run.app/graph/pizza\" />",
 		},
-		"host":     host,
+		"host":     url.Host,
 		"basePath": "/",
-		"schemes":  []string{"https"},
+		"schemes":  []string{url.Scheme},
 		"paths":    endpoints,
 	}
 	for wfName, wf := range workflows {
