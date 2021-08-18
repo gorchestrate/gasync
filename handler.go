@@ -3,6 +3,7 @@ package gasync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -18,14 +19,16 @@ import (
 type Empty struct {
 }
 
-func Event(name string, handler interface{}, ss ...async.Stmt) async.Event {
+func Event(role, name string, handler interface{}, ss ...async.Stmt) async.Event {
 	return async.On(name, &ReflectEvent{
+		Role:    role,
 		Handler: handler,
 	}, ss...)
 }
 
 // This is an example of how to create your custom events
 type ReflectEvent struct {
+	Role    string
 	Handler interface{}
 }
 
@@ -86,10 +89,12 @@ func (h ReflectEvent) MarshalJSON() ([]byte, error) {
 		Type   string
 		Input  *jsonschema.Schema
 		Output *jsonschema.Schema
+		Role   string
 	}{
 		Type:   "handler",
 		Input:  in,
 		Output: out,
+		Role:   h.Role,
 	})
 }
 
@@ -104,6 +109,9 @@ func (h *ReflectEvent) Handle(ctx context.Context, req async.CallbackRequest, in
 		return nil, fmt.Errorf("jsonschema validate failure: %v using %v", err, string(in))
 	}
 	if !vRes.Valid() {
+		for _, e := range vRes.Errors() {
+			return nil, ValidateErr(e.Field(), e.String())
+		}
 		return nil, fmt.Errorf("jsonschema validate: %v", vRes.Errors())
 	}
 	fv := reflect.ValueOf(h.Handler)
@@ -132,7 +140,7 @@ func (h *ReflectEvent) Handle(ctx context.Context, req async.CallbackRequest, in
 			return nil, fmt.Errorf("second output param is not an error")
 		}
 		if outErr != nil {
-			return nil, fmt.Errorf("err in handler: %v", err)
+			return nil, fmt.Errorf("err in handler: %w", outErr)
 		}
 	}
 	d, err := json.Marshal(res[0].Interface())
@@ -158,26 +166,53 @@ func (t *ReflectEvent) Teardown(ctx context.Context, req async.CallbackRequest, 
 func (s Server) SimpleEventHandler(w http.ResponseWriter, r *http.Request) {
 	d, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(500)
-		fmt.Fprintf(w, err.Error())
+		jsonErr(w, err, 500)
 		return
 	}
 	out, err := s.Engine.HandleEvent(r.Context(), mux.Vars(r)["id"], mux.Vars(r)["event"], d)
 	if err != nil {
-		w.WriteHeader(400)
-		fmt.Fprintf(w, err.Error())
-		return
-	}
-	// after callback is handled - we wait for resume process
-	// we can rely on Scheduler to execute Resume(), but then clients that want to send
-	// events to us will have to wait till Resume() is executed.
-	err = s.Engine.Resume(r.Context(), mux.Vars(r)["id"])
-	if err != nil {
-		log.Printf("resume err: %v", err)
-		w.WriteHeader(500)
+		jsonErr(w, err, 400)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+type ErrValidate struct {
+	Path    string
+	Message string
+}
+
+func (e ErrValidate) Error() string {
+	return fmt.Sprintf("validation failed: %v %v", e.Path, e.Message)
+}
+
+func ValidateErr(path, format string, params ...interface{}) ErrValidate {
+	return ErrValidate{
+		Path:    path,
+		Message: fmt.Sprintf(format, params...),
+	}
+}
+
+func jsonErr(w http.ResponseWriter, err error, code int) {
+	w.WriteHeader(code)
+	var valErr ErrValidate
+	e := struct {
+		Msg  string
+		Type string
+		Path string
+	}{
+		Msg:  err.Error(),
+		Type: "general",
+	}
+
+	if errors.As(err, &valErr) {
+		e.Msg = valErr.Message
+		e.Type = "validate"
+		e.Path = valErr.Path
+	}
+
+	_ = json.NewEncoder(w).Encode(e)
+	log.Printf("%v", e)
 }

@@ -63,7 +63,8 @@ func (mgr *GTasksScheduler) ResumeHandler(w http.ResponseWriter, r *http.Request
 
 // in this demo we resume workflows right inside the http handler.
 // we use this scheduler only for redundancy in case resume will fail for some reason in http handler.
-func (mgr *GTasksScheduler) Schedule(ctx context.Context, id string) error {
+func (mgr *GTasksScheduler) Schedule(ctx context.Context, id string, delay time.Duration) error {
+	defer logTime("schedule")()
 	req := ResumeRequest{
 		ID: id,
 	}
@@ -72,7 +73,7 @@ func (mgr *GTasksScheduler) Schedule(ctx context.Context, id string) error {
 	if err != nil {
 		panic(err)
 	}
-	sTime := time.Now().Add(time.Millisecond * 100).Format(time.RFC3339)
+	sTime := time.Now().Add(delay).Format(time.RFC3339)
 	_, err = mgr.C.Projects.Locations.Queues.Tasks.Create(
 		fmt.Sprintf("projects/%v/locations/%v/queues/%v",
 			mgr.ProjectID, mgr.LocationID, mgr.QueueName),
@@ -89,11 +90,11 @@ func (mgr *GTasksScheduler) Schedule(ctx context.Context, id string) error {
 	return err
 }
 
-func (s *Server) Timeout(dur time.Duration) *TimeoutHandler {
-	return &TimeoutHandler{
+func (s *Server) Timeout(name string, dur time.Duration, stmts ...async.Stmt) async.Event {
+	return async.On(name, &TimeoutHandler{
 		Duration:  dur,
 		scheduler: s.Scheduler,
-	}
+	}, stmts...)
 }
 
 type TimeoutHandler struct {
@@ -116,10 +117,12 @@ func (t *TimeoutHandler) Handle(ctx context.Context, req async.CallbackRequest, 
 }
 
 func (t *TimeoutHandler) Setup(ctx context.Context, req async.CallbackRequest) (string, error) {
+	defer logTime("timeout setup")()
 	return t.scheduler.Setup(ctx, req, t.Duration)
 }
 
 func (t *TimeoutHandler) Teardown(ctx context.Context, req async.CallbackRequest, handled bool) error {
+	defer logTime("timeout teardown")()
 	return t.scheduler.Teardown(ctx, req, handled)
 }
 
@@ -138,6 +141,7 @@ func (req TimeoutReq) HMAC(secret []byte) string {
 }
 
 func (mgr *GTasksScheduler) TimeoutHandler(w http.ResponseWriter, r *http.Request) {
+	defer logTime("timeout handler")()
 	var req TimeoutReq
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -91,28 +90,25 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		wfName := mux.Vars(r)["name"]
 		wf, ok := workflows[wfName]
 		if !ok {
-			fmt.Fprintf(w, " workflow  %v not found", wfName)
+			jsonErr(w, fmt.Errorf(" workflow  %v not found", wfName), 404)
 			return
 		}
 		err := engine.ScheduleAndCreate(r.Context(), mux.Vars(r)["id"], wfName, wf()) // TODO: how to create workflow with params!?
 		if err != nil {
-			w.WriteHeader(400)
-			fmt.Fprintf(w, err.Error())
+			jsonErr(w, err, 400)
 			return
 		}
 		// after callback is handled - we wait for resume process
 		err = engine.Resume(r.Context(), mux.Vars(r)["id"])
 		if err != nil {
-			log.Printf("resume err: %v", err)
-			w.WriteHeader(500)
+			jsonErr(w, err, 500)
 			return
 		}
 	}).Methods("POST")
-	mr.HandleFunc("/wf/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mr.HandleFunc("/wf/{name}/{id}", func(w http.ResponseWriter, r *http.Request) {
 		wf, err := engine.Get(r.Context(), mux.Vars(r)["id"])
 		if err != nil {
-			w.WriteHeader(400)
-			fmt.Fprintf(w, err.Error())
+			jsonErr(w, err, 400)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -146,22 +142,30 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		wfName := mux.Vars(r)["name"]
 		wf, ok := workflows[wfName]
 		if !ok {
-			fmt.Fprintf(w, " workflow  %v not found", wfName)
+			jsonErr(w, fmt.Errorf(" workflow  %v not found", wfName), 404)
 			return
 		}
 		w.Header().Add("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(wf().Definition())
+
+		defs := struct {
+			Stmts async.Section
+			State *jsonschema.Schema
+		}{
+			Stmts: wf().Definition(),
+			State: jsonschema.Reflect(wf()),
+		}
+		_ = json.NewEncoder(w).Encode(defs)
 	})
 	mr.HandleFunc("/swagger/{name}", func(w http.ResponseWriter, r *http.Request) {
 		wfName := mux.Vars(r)["name"]
 		wf, ok := workflows[wfName]
 		if !ok {
-			fmt.Fprintf(w, " workflow  %v not found", wfName)
+			jsonErr(w, fmt.Errorf(" workflow  %v not found", wfName), 404)
 			return
 		}
 		docs, err := SwaggerDoc(cfg.BasePublicURL, wfName, wf)
 		if err != nil {
-			fmt.Fprintf(w, "%v ", err)
+			jsonErr(w, err, 500)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
