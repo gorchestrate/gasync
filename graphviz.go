@@ -88,7 +88,7 @@ func (g *Grapher) Walk(s async.Stmt, ctx GraphCtx) GraphCtx {
 		breaks := []string{}
 		for _, v := range x.Cases {
 			var cid string
-			_, ok := v.Handler.(*ReflectEvent)
+			_, ok := v.Handler.(*async.ReflectEvent)
 			_, ok2 := v.Handler.(*TimeoutHandler)
 			if ok {
 				cid = ctx.node(g, v.Callback.Name, "▶️ /"+v.Callback.Name+"  ", "component")

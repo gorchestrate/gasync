@@ -241,7 +241,9 @@ func (fs FirestoreEngine) HandleEvent(ctx context.Context, id string, name strin
 		_ = fs.Unlock(ctx, id)
 		return nil, err
 	}
-	out, err := async.HandleEvent(ctx, name, state, &wf.Meta, input)
+	out, err := async.HandleCallback(ctx, async.CallbackRequest{
+		Name: name,
+	}, state, &wf.Meta, input)
 	if err != nil {
 		_ = fs.Unlock(ctx, id)
 		return out, fmt.Errorf("err during workflow processing: %w", err)
@@ -294,7 +296,9 @@ func (fs FirestoreEngine) Resume(ctx context.Context, id string) error {
 		return err
 	}
 	s := logTime("resume")
-	_, err = async.Resume(ctx, state, &wf.Meta)
+	err = async.Resume(ctx, state, &wf.Meta, func(t async.CheckpointType) error {
+		return nil // don't checkpoint for performance reasons
+	})
 	if err != nil {
 		_ = fs.Unlock(ctx, id)
 		return fmt.Errorf("err during workflow processing: %w", err)
@@ -332,7 +336,9 @@ func (fs FirestoreEngine) ScheduleAndCreate(ctx context.Context, id, name string
 		return fmt.Errorf("workflow not found: %v", wf.Meta.Workflow)
 	}
 	s := w()
-	_, err := async.Resume(ctx, s, &wf.Meta)
+	err := async.Resume(ctx, s, &wf.Meta, func(t async.CheckpointType) error {
+		return nil // don't checkpoint for performance reasons
+	})
 	if err != nil {
 		_ = fs.Unlock(ctx, id)
 		return fmt.Errorf("err during workflow processing: %w", err)

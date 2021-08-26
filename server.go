@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -178,6 +180,35 @@ func NewServer(cfg Config, workflows map[string]func() async.WorkflowState) (*Se
 		Engine:    engine,
 		Scheduler: gTaskMgr,
 	}
-	mr.HandleFunc("/wf/{name}/{id}/{event}", ret.SimpleEventHandler)
+	mr.HandleFunc("/wf/{name}/{id}/{event}", func(w http.ResponseWriter, r *http.Request) {
+		d, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			jsonErr(w, err, 500)
+			return
+		}
+		out, err := s.Engine.HandleEvent(r.Context(), mux.Vars(r)["id"], mux.Vars(r)["event"], d)
+		if err != nil {
+			jsonErr(w, err, 400)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
 	return ret, nil
+}
+
+func jsonErr(w http.ResponseWriter, err error, code int) {
+	w.WriteHeader(code)
+	e := struct {
+		Msg  string
+		Type string
+		Path string
+	}{
+		Msg:  err.Error(),
+		Type: "general",
+	}
+
+	_ = json.NewEncoder(w).Encode(e)
+	log.Printf("%v", e)
 }

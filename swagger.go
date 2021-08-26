@@ -53,7 +53,7 @@ func SwaggerDoc(baseurl string, wfName string, wf func() async.WorkflowState) (i
 		switch x := s.(type) {
 		case async.WaitEventsStmt:
 			for _, v := range x.Cases {
-				h, ok := v.Handler.(*ReflectEvent)
+				h, ok := v.Handler.(*async.ReflectEvent)
 				if !ok {
 					continue
 				}
